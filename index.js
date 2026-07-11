@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketio = require('socket.io');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const pool = require('./db');
 const commandesRoutes = require('./routes/commandes');
@@ -31,7 +32,16 @@ app.get('/', (req, res) => {
     res.json({ message: 'Serveur livraison operationnel' });
 });
 
-// Socket.io
+// Authentification des sockets : un token JWT valide est obligatoire pour se connecter
+io.use((socket, next) => {
+    try {
+        socket.utilisateur = jwt.verify(socket.handshake.auth.token, process.env.JWT_SECRET);
+        next();
+    } catch (err) {
+        next(new Error('Authentification requise'));
+    }
+});
+
 io.on('connection', (socket) => {
     console.log('Un utilisateur connecte :', socket.id);
 
@@ -43,7 +53,10 @@ io.on('connection', (socket) => {
 
     // Reception d'une position GPS liee a une livraison precise
     socket.on('position_gps', async (data) => {
-        const { livraison_id, livreur_id, latitude, longitude } = data;
+        // Le livreur_id vient du token, jamais du client : impossible d'usurper un autre livreur
+        if (socket.utilisateur.role !== 'livreur') return;
+        const livreur_id = socket.utilisateur.livreur_id;
+        const { livraison_id, latitude, longitude } = data;
         console.log('Position recue pour livraison', livraison_id, ':', latitude, longitude);
 
         try {

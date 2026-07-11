@@ -1,10 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { verifierToken, autoriser } = require('../middleware/auth');
 
 // Créer une commande (avec calcul automatique du prix)
-router.post('/', async (req, res) => {
-    const { client_id, adresse_depart, adresse_arrivee, type_vehicule, poids_colis, distance_km } = req.body;
+router.post('/', verifierToken, autoriser('client', 'admin'), async (req, res) => {
+    const { adresse_depart, adresse_arrivee, type_vehicule, poids_colis, distance_km } = req.body;
+    // Un client ne peut créer une commande que pour lui-même
+    const client_id = req.utilisateur.role === 'client' ? req.utilisateur.id : req.body.client_id;
     try {
         const tarifResult = await pool.query(
             'SELECT * FROM tarifs WHERE type_vehicule = $1',
@@ -34,10 +37,12 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Lister toutes les commandes
-router.get('/', async (req, res) => {
+// Lister les commandes (un client ne voit que les siennes, l'admin voit tout)
+router.get('/', verifierToken, autoriser('client', 'admin'), async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM commandes ORDER BY created_at DESC');
+        const result = req.utilisateur.role === 'client'
+            ? await pool.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY created_at DESC', [req.utilisateur.id])
+            : await pool.query('SELECT * FROM commandes ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
@@ -45,7 +50,7 @@ router.get('/', async (req, res) => {
 });
 
 // Confirmer ou annuler une commande
-router.put('/:id/statut', async (req, res) => {
+router.put('/:id/statut', verifierToken, autoriser('admin'), async (req, res) => {
     const { id } = req.params;
     const { statut } = req.body;
     try {
