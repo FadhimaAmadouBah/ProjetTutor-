@@ -9,6 +9,7 @@ const commandesRoutes = require('./routes/commandes');
 const livreursRoutes = require('./routes/livreurs');
 const utilisateursRoutes = require('./routes/utilisateurs');
 const livraisonsRoutes = require('./routes/livraisons');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 const server = http.createServer(app);
@@ -26,6 +27,7 @@ app.use('/api/commandes', commandesRoutes);
 app.use('/api/livreurs', livreursRoutes);
 app.use('/api/utilisateurs', utilisateursRoutes);
 app.use('/api/livraisons', livraisonsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Route de test
 app.get('/', (req, res) => {
@@ -81,8 +83,12 @@ io.on('connection', (socket) => {
         console.log('Utilisateur deconnecte :', socket.id);
     });
 });
-// Demarrage du serveur
+// Demarrage du serveur (sauf quand ce fichier est importé, ex. par les tests)
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Serveur demarre sur le port ${PORT}`);
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`Serveur demarre sur le port ${PORT}`);
+    });
+}
+
+module.exports = { app, server, io };

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { verifierToken, autoriser } = require('../middleware/auth');
+const { creerNotification } = require('../services/notifications');
 
 // Affecter un livreur a une commande (creation d'une livraison)
 router.post('/', verifierToken, autoriser('admin'), async (req, res) => {
@@ -9,24 +10,30 @@ router.post('/', verifierToken, autoriser('admin'), async (req, res) => {
     try {
         // Creer la livraison
         const result = await pool.query(
-            `INSERT INTO livraisons (commande_id, livreur_id, statut, date_debut) 
+            `INSERT INTO livraisons (commande_id, livreur_id, statut, date_debut)
              VALUES ($1, $2, 'ASSIGNEE', NOW()) RETURNING *`,
             [commande_id, livreur_id]
         );
 
         // Mettre a jour le statut de la commande
-        await pool.query(
-            `UPDATE commandes SET statut = 'CONFIRMEE' WHERE id = $1`,
+        const commande = await pool.query(
+            `UPDATE commandes SET statut = 'CONFIRMEE' WHERE id = $1 RETURNING client_id`,
             [commande_id]
         );
 
         // Rendre le livreur indisponible
-        await pool.query(
-            `UPDATE livreurs SET disponible = false WHERE id = $1`,
+        const livreur = await pool.query(
+            `UPDATE livreurs SET disponible = false WHERE id = $1 RETURNING utilisateur_id`,
             [livreur_id]
         );
 
-        res.status(201).json(result.rows[0]);
+        const livraison = result.rows[0];
+        await Promise.all([
+            creerNotification(commande.rows[0].client_id, `Un livreur a été affecté à votre commande #${commande_id}`),
+            creerNotification(livreur.rows[0].utilisateur_id, `Vous avez été affecté à la livraison #${livraison.id}`),
+        ]);
+
+        res.status(201).json(livraison);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
@@ -70,7 +77,14 @@ router.put('/:id/statut', verifierToken, autoriser('admin', 'livreur'), async (r
         if (result.rows.length === 0) {
             return res.status(403).json({ erreur: 'Livraison introuvable ou non assignée à ce livreur' });
         }
-        res.json(result.rows[0]);
+
+        const livraison = result.rows[0];
+        const commande = await pool.query('SELECT client_id FROM commandes WHERE id = $1', [livraison.commande_id]);
+        if (commande.rows.length > 0) {
+            await creerNotification(commande.rows[0].client_id, `Votre livraison #${livraison.id} est maintenant : ${statut}`);
+        }
+
+        res.json(livraison);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }

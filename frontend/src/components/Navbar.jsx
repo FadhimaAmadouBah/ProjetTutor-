@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Notifications from './Notifications';
 
 export default function Navbar() {
     const { user, logout } = useAuth();
@@ -16,6 +17,7 @@ export default function Navbar() {
             <div className="navbar-links">
                 {user ? (
                     <>
+                        <Notifications />
                         <span className="navbar-user">{user.prenom} ({user.role})</span>
                         <button onClick={seDeconnecter} className="btn btn-secondary">Déconnexion</button>
                     </>
